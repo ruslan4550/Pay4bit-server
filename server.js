@@ -14,16 +14,20 @@ const PAY4BIT_FORM_URL = 'https://api.pay4bit.net/pay';
 
 app.post('/create-payment', (req, res) => {
   try {
-    // Sınamaq üçün birbaşa məcburi 5 EUR təyin edirik
-    const sum = "5.00"; 
-    const currency = "EUR";
-    const account = 'user_' + Date.now();
+    // İstədiyiniz məbləği buradan və ya req.body-dən götürün
+    let sum = parseFloat(req.body.sum || 5);   // minimum 1 EUR
+    if (isNaN(sum) || sum < 1) sum = 5;
 
-    // Pay4bit rəsmi sənədlərinə uyğun imza sətri
-    const signString = `${PUBLIC_KEY}:${sum}:${currency}:${account}:${SECRET_KEY}`;
+    const amount = sum.toFixed(2);              // mütləq "5.00" formatı
+    const currency = (req.body.currency || 'EUR').toUpperCase();
+    const account = req.body.account || ('user_' + Date.now());
+    const desc = req.body.desc || ('Payment #' + account);
+
+    // RƏSMİ İMZA (docs-a uyğun)
+    const signString = desc + account + amount + SECRET_KEY;
     const signature = crypto.createHash('sha256').update(signString).digest('hex');
 
-    console.log("Göndərilən məlumatlar:", { PUBLIC_KEY, account, sum, currency, signature });
+    console.log('Pay4Bit params:', { public_key: PUBLIC_KEY, account, sum: amount, currency, desc, sign: signature });
 
     res.json({
       success: true,
@@ -31,9 +35,10 @@ app.post('/create-payment', (req, res) => {
       params: {
         public_key: PUBLIC_KEY,
         account: account,
-        sum: sum,
+        sum: amount,          // "5.00"
         currency: currency,
-        signature: signature
+        desc: desc,
+        sign: signature       // check_sign
       }
     });
 
