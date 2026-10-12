@@ -14,38 +14,36 @@ const PUBLIC_KEY = '36cf4-712';
 const SECRET_KEY = 'd868aee241455e6216d3a99cb3283d73';
 const PAY4BIT_FORM_URL = 'https://api.pay4bit.net/pay';
 
-// ==================== 1. ÖDƏNİŞ YARATMA (Signature ilə) ====================
-// Frontend-dəki "Mastercard/Visa" düyməsinə basanda bura müraciət olunacaq
+// ==================== 1. ÖDƏNİŞ YARATMA ====================
 app.post('/create-payment', (req, res) => {
   try {
-    // Frontend-dən gələn məbləğ və valyuta (göndərilməzsə standart olaraq 1 EUR)
-    const sum = req.body.amount || 1; 
+    // Gələn məbləği mütləq rəqəmə (float) çeviririk, əks halda default 1 EUR olsun
+    let amount = parseFloat(req.body.amount);
+    if (isNaN(amount) || amount < 1) {
+      amount = 1; 
+    }
+    
+    // Pay4bit bəzən tam ədəd tələb edir və ya nöqtəli format istəyir (məsələn: 1.00)
+    const sum = amount.toFixed(2);
     const currency = req.body.currency || 'EUR';
-
-    // İstifadəçi üçün unikal ödəniş (hesab) ID-si yaradırıq
     const account = 'user_' + Date.now();
 
     // ---------------------------------------------------------
     // İMZA (SIGNATURE) YARADILMASI
-    // Təhlükəsizlik üçün məlumatları gizli açarla birləşdirib şifrələyirik.
-    // QEYD: Əgər Pay4Bit xüsusi bir ardıcıllıq tələb edirsə (məsələn: account:sum:currency:secret)
-    // o zaman signString ardıcıllığını ona uyğun dəyişmək lazımdır.
     // ---------------------------------------------------------
     const signString = `${PUBLIC_KEY}:${sum}:${currency}:${account}:${SECRET_KEY}`;
-    
-    // MD5 və ya SHA256 istifadə oluna bilər (əksər sistemlər sha256 istifadə edir)
     const signature = crypto.createHash('sha256').update(signString).digest('hex');
 
-    // Məlumatları (imza daxil olmaqla) frontend-ə qaytarırıq
+    // Pay4bit formunun tələb etdiyi parametrlər
     res.json({
       success: true,
       payment_url: PAY4BIT_FORM_URL,
       params: {
         public_key: PUBLIC_KEY,
         account: account,
-        sum: sum,
+        sum: sum, // Pay4bit bəzi hallarda 'amount' yox 'sum' gözləyir, imza da buna uyğundur
         currency: currency,
-        signature: signature // Pay4Bit-in tələb etdiyi əsas parametr!
+        signature: signature
       }
     });
 
@@ -55,7 +53,7 @@ app.post('/create-payment', (req, res) => {
   }
 });
 
-// ==================== 2. WEBHOOK (Pay4Bit-dən gələn təsdiq) ====================
+// ==================== 2. WEBHOOK ====================
 app.post('/webhook', (req, res) => {
   try {
     console.log('📥 Webhook gəldi:', JSON.stringify(req.body));
@@ -63,14 +61,10 @@ app.post('/webhook', (req, res) => {
 
     if (status === 'AC' || status === 'CO') {
       console.log(`✅ Uğurlu ödəniş: ${account} — ${sum} ${currency}`);
-      // DİQQƏT: Bura istifadəçinin saytdakı balansını (məsələn, verilənlər bazasında) artırmaq kodunu yazacaqsınız.
-    } else if (status === 'FA' || status === 'DE' || status === 'EX') {
-      console.log(`❌ Uğursuz: ${account} — Status: ${status}`);
     } else {
-      console.log(`⏳ Gözləmədə: ${account} — Status: ${status}`);
+      console.log(`❌ Status: ${status}`);
     }
 
-    // Pay4Bit-ə məlumatı aldığımızı təsdiqləyirik
     res.status(200).send('OK');
   } catch (error) {
     console.error('❌ Webhook xətası:', error);
@@ -82,7 +76,7 @@ app.post('/webhook', (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     status: '✅ Backend aktivdir',
-    message: 'Digital Signature (Rəqəmsal İmza) dəstəklənir!'
+    message: 'Pay4bit server işləyir!'
   });
 });
 
@@ -90,5 +84,4 @@ app.get('/', (req, res) => {
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`🚀 Server ${PORT} portunda işləyir`);
-  console.log(`🔒 Digital Signature (Rəqəmsal İmza) modulu aktivdir`);
 });
